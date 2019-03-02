@@ -22,10 +22,22 @@ import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.maps.model.Polyline;
+import com.google.android.gms.maps.model.PolylineOptions;
+import com.google.maps.DirectionsApi;
+import com.google.maps.DirectionsApiRequest;
+import com.google.maps.GeoApiContext;
+import com.google.maps.model.DirectionsLeg;
+import com.google.maps.model.DirectionsResult;
+import com.google.maps.model.DirectionsRoute;
+import com.google.maps.model.DirectionsStep;
+import com.google.maps.model.EncodedPolyline;
 import com.karumi.dexter.Dexter;
 import com.karumi.dexter.PermissionToken;
 import com.karumi.dexter.listener.PermissionDeniedResponse;
@@ -36,7 +48,9 @@ import com.karumi.dexter.listener.single.SnackbarOnDeniedPermissionListener;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.ProgressDialog;
 import android.content.Intent;
+import android.graphics.Color;
 import android.graphics.Point;
 import android.location.Address;
 import android.location.Geocoder;
@@ -59,6 +73,7 @@ import android.widget.RelativeLayout;
 import android.widget.Toast;
 
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
@@ -74,11 +89,24 @@ public class BasicMapDemoActivity extends AppCompatActivity implements
         GoogleMap.OnCameraMoveListener,
         OnMapReadyCallback {
 
+    private ProgressDialog progressDialog;
+    private int noofpoly=0,i;
+    private LatLng coord;
+    GeoApiContext context;
+    private String desti = "";
+    private ArrayList<LatLng> goodpoints = new ArrayList<>();
+    private ArrayList<LatLng> badpoints = new ArrayList<>();
+
+
+    List<LatLng> path = new ArrayList();
     private LatLng coordinate;
+    private ArrayList<LatLng> todraw;
     private Geocoder geo;
     private Marker destin = null;
     private GoogleMap mymap;
-
+    private Boolean routeDrawn = false;
+    int prog=0;
+    private EditText edt;
     private FloatingActionButton fab;
     public static void hideKeyboard(Activity activity) {
         InputMethodManager imm = (InputMethodManager) activity.getSystemService(Activity.INPUT_METHOD_SERVICE);
@@ -91,85 +119,107 @@ public class BasicMapDemoActivity extends AppCompatActivity implements
         imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
     }
 
+    public void fillgoodpoints(){
+
+//        goodpoints.add(new LatLng(13.034932,80.250702));
+//        goodpoints.add(new LatLng(13.046530 ,80.253690));
+//        goodpoints.add(new LatLng(13.045553 , 80.256394));
+//        goodpoints.add(new LatLng(13.025240 , 80.251545));
+        goodpoints.add(new LatLng(13.031985 ,80.251844));
+//        goodpoints.add(new LatLng(13.039627 , 80.257989));
+//        goodpoints.add(new LatLng(13.042413 ,80.256283));
+//        goodpoints.add(new LatLng(13.033535 ,80.251135));
+//        goodpoints.add(new LatLng(13.033513 ,80.252933));
+//        goodpoints.add(new LatLng(13.031517, 80.247604));
+//        goodpoints.add(new LatLng(13.031353, 80.249381));
+//        goodpoints.add(new LatLng(13.033101, 80.246885));
+        goodpoints.add(new LatLng(13.032960, 80.249530));
+        goodpoints.add(new LatLng(13.031533, 80.247497));
+        goodpoints.add(new LatLng(13.033109, 80.246893));
+        goodpoints.add(new LatLng(13.033004, 80.248792));
+
+    }
+
+    public void fillbadpoints(){
+        badpoints.add(new LatLng(13.033689, 80.251474));
+        badpoints.add(new LatLng(13.033720, 80.249311));
+        badpoints.add(new LatLng(13.034075, 80.247838));
+        badpoints.add(new LatLng(13.033743, 80.249718));
+        badpoints.add(new LatLng(13.032489, 80.247980));
+
+
+
+
+
+
+
+
+
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.basic_demo);
+        progressDialog = new ProgressDialog(BasicMapDemoActivity.this);
         fab = (FloatingActionButton) findViewById(R.id.fab);
         final View rllay = findViewById(R.id.rellay);
 
         geo = new Geocoder(getApplicationContext(),Locale.getDefault());
 
+        fillgoodpoints();
+        fillbadpoints();
+        context = new GeoApiContext.Builder()
+                .apiKey("AIzaSyCyI9O3Mh7D1LEdrtdRLkYDilcKBAxsJX4")
+                .build();
+        edt = (EditText) findViewById(R.id.enterloc);
+
+
+
         Button searchbutt = (Button) findViewById(R.id.searchbutt);
-        final EditText edt = (EditText) findViewById(R.id.enterloc);
 
         searchbutt.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                try {
-                    edt.setFocusableInTouchMode(false);
-                    edt.setFocusable(false);
-                    edt.setFocusableInTouchMode(true);
-                    edt.setFocusable(true);
-
-                    hideKeyboard(BasicMapDemoActivity.this);
-                    String loc = edt.getEditableText().toString();
-                    if(loc.equals(""))
-                        return;
-                    StringBuilder sb = new StringBuilder();
-
-                    List addressList = geo.getFromLocationName(loc, 1);
-                    if (addressList != null && addressList.size() > 0) {
-                        Address address = (Address) addressList.get(0);
-                        double x1 = address.getLatitude();
-                        double y1 = address.getLongitude();
-                        double x2 = coordinate.latitude;
-                        double y2 = coordinate.longitude;
-                        sb.append(address.getLatitude()).append(" ");
-                        sb.append(address.getLongitude()).append("\n");
-
-                        LatLng coord = new LatLng(address.getLatitude(),address.getLongitude());
-                        LatLng coord2 = new LatLng((x1+x2)/2,(y1+y2)/2);
-                        Location a = new Location("dummyprovider");
-                        Location b = new Location("dummyprovider");
-                        a.setLatitude(coord.latitude);
-                        a.setLongitude(coord.longitude);
-                        b.setLatitude(coordinate.latitude);
-                        b.setLongitude(coordinate.latitude);
-
-                        Log.e("location testing",a.distanceTo(b)+"");
+                                          @Override
+                                          public void onClick(View view) {
+                                              desti = edt.getEditableText().toString();
+                                              if(desti.equals(""));
+                                              else{
+                                                  hideKeyboard(BasicMapDemoActivity.this);
+                                                  if(routeDrawn){
+                                                      Intent temp = new Intent(BasicMapDemoActivity.this,TempActivity.class);
+                                                      temp.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
+                                                      temp.putExtra("desti",desti);
+                                                      finish();
+                                                      startActivity(temp);
+                                                  }
+                                                  else{
+                                                      try{
+                                                          List addressList = geo.getFromLocationName(desti, 1);
+                                                          if (addressList != null && addressList.size() > 0) {
+                                                              Address address = (Address) addressList.get(0);
+                                                              double x1 = address.getLatitude();
+                                                              double y1 = address.getLongitude();
+                                                              coord = new LatLng(x1,y1);
+                                                          }
+                                                      }
+                                                      catch (Exception e){
+                                                          Log.e("GETTING_ROUTE","geocoding "+e.getMessage());
+                                                      }
+                                                      connectPoints();
+                                                  }
 
 
-                        int zoom=0;
-                        if(a.distanceTo(b)<=5301720)zoom=13;
-                        else if(a.distanceTo(b)<=7301720) zoom = 12;
-                        else if(a.distanceTo(b)<=8301720) zoom = 10;
-                        else zoom = 8;
 
-                        CameraUpdate location = CameraUpdateFactory.newLatLngZoom(
-                                coord2, zoom);
-                        mymap.animateCamera(location);
-                        if(destin==null);
-                        else
-                            destin.remove();
-                        destin = mymap.addMarker(new MarkerOptions().position(coord).title("Destination"));
-//                        DrawRouteMaps.getInstance(getApplicationContext())
-//                                .draw(coord,coordinate,mymap);
-//                        LatLngBounds bounds = new LatLngBounds.Builder()
-//                                .include(coord)
-//                                .include(coordinate).build();
-//                        Point displaySize = new Point();
-//                        getWindowManager().getDefaultDisplay().getSize(displaySize);
-                     //   mymap.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds,displaySize.x,250,30));
-                        String res = sb.toString();
-//                        Toast.makeText(getApplicationContext(), res, Toast.LENGTH_SHORT).show();
-                        Log.e("geoloc",res);
-                    }
-                } catch (IOException e) {
-                    Log.e("geoloc", "Unable to connect to Geocoder", e);
-                }
-            }
-        });
+                                                  //
+
+//
+
+                                              }
+
+
+
+                                          }
+                                      });
 
         SupportMapFragment mapFragment =
                 (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
@@ -197,6 +247,330 @@ public class BasicMapDemoActivity extends AppCompatActivity implements
      * just add a marker near Africa.
      */
 
+
+    public void drawRoute(LatLng source, LatLng destination){
+        // draws a route with coordinate as starting
+        // coord is destination
+        try {
+
+
+            if (desti.equals(""))
+                return;
+            //progressDialog.show();
+            StringBuilder sb = new StringBuilder();
+
+            //List addressList = geo.getFromLocationName(desti, 1);
+            //if (addressList != null && addressList.size() > 0) {
+//                Address address = (Address) addressList.get(0);
+//                double x1 = address.getLatitude();
+//                double y1 = address.getLongitude();
+//                double x2 = coordinate.latitude;
+//                double y2 = coordinate.longitude;
+//                sb.append(address.getLatitude()).append(" ");
+//                sb.append(address.getLongitude()).append("\n");
+
+
+//                        CameraUpdate location = CameraUpdateFactory.newLatLngZoom(
+//                                coord2, zoom);
+//                        mymap.animateCamera(location);
+                if (destin == null) ;
+                else
+                    destin.remove();
+                destin = mymap.addMarker(new MarkerOptions().position(coord).title("Destination"));
+                Log.e("GETTING_ROUTE", source + "");
+                Log.e("GETTING_ROUTE", destination + "");
+
+//                        new AsyncTask<Void, Void, Integer>() {
+//                            @Override
+//                            protected Integer doInBackground(Void... params) {
+
+
+                                                      /*
+
+                                                                GETTING DIRECTIONS FROM API STARTING HERE <<<<<<<<<<<<<<<<<<<<<<<<<<
+
+                                                       */
+                try {
+                    DirectionsApiRequest req = DirectionsApi.getDirections(context, source.latitude + "," + source.longitude, destination.latitude + "," + destination.longitude);
+                    DirectionsResult res = req.await();
+                    //Loop through legs and steps to get encoded polylines of each step
+                    if (res.routes != null && res.routes.length > 0) {
+                        DirectionsRoute route = res.routes[0];
+
+                        if (route.legs != null) {
+                            for (int i = 0; i < route.legs.length; i++) {
+                                DirectionsLeg leg = route.legs[i];
+                                if (leg.steps != null) {
+                                    for (int j = 0; j < leg.steps.length; j++) {
+                                        DirectionsStep step = leg.steps[j];
+                                        if (step.steps != null && step.steps.length > 0) {
+                                            for (int k = 0; k < step.steps.length; k++) {
+                                                DirectionsStep step1 = step.steps[k];
+                                                EncodedPolyline points1 = step1.polyline;
+                                                if (points1 != null) {
+                                                    //Decode polyline and add points to list of route coordinates
+                                                    List<com.google.maps.model.LatLng> coords1 = points1.decodePath();
+                                                    for (com.google.maps.model.LatLng coord1 : coords1) {
+                                                        path.add(new LatLng(coord1.lat, coord1.lng));
+                                                    }
+                                                }
+
+                                            }
+                                        } else {
+                                            EncodedPolyline points = step.polyline;
+                                            if (points != null) {
+                                                //Decode polyline and add points to list of route coordinates
+                                                List<com.google.maps.model.LatLng> coords = points.decodePath();
+                                                for (com.google.maps.model.LatLng coo : coords) {
+                                                    path.add(new LatLng(coo.lat, coo.lng));
+                                                }
+                                            }
+
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ex) {
+                    Log.e("GETTING_ROUTE", ex.getLocalizedMessage());
+                }
+
+                //Draw the polyline
+                if (path.size() > 0) {
+                    try {
+                        Log.e("GETTING_ROUTE", "HERE!!!!!!! path size >0 " + path.size());
+                        //if(noofpoly<1) {
+                            mymap.addPolyline(new PolylineOptions().addAll(path).color(Color.BLUE).width(7));
+                            routeDrawn = true;
+                        //}
+                        //noofpoly++;
+                        Log.e("GETTING_ROUTE",noofpoly+"");
+                        //mymap.addPolyline(opts);
+                    }
+                    catch (Exception e){
+                        Log.e("GETTING_ROUTE",e.getMessage());
+                    }
+                }
+                mymap.getUiSettings().setZoomControlsEnabled(true);
+                //mymap.animateCamera(CameraUpdateFactory.newLatLngZoom(coord, 14));
+
+                //progressDialog.setProgress(prog);
+                //progressDialog.hide();
+                                                      /*
+
+                                                               GETTING DIRECTIONS FROM API ENDING HERE >>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+                                                       */
+
+                //mymap.moveCamera(CameraUpdateFactory.newLatLngZoom(coordinate, 14));
+                //return 1;
+
+//                      Log.e("geoloc",res);
+
+        } catch (Exception e) {
+            Log.e("geoloc", "Unable to connect to Geocoder", e);
+        }
+    }
+
+    public ArrayList<LatLng> findWayPoints(ArrayList<LatLng> gp,ArrayList<LatLng> bp,LatLng source , LatLng dest ){
+
+        LatLng midLatLng ;
+        ArrayList<LatLng> wayPoints ;
+        wayPoints = new ArrayList<LatLng>(100);
+
+        double temp;
+        int i;
+        Location a,b;
+        a = new Location("");
+        b = new Location("");
+
+        double threshold;
+        double threshold1=50.0;
+        ArrayList<LatLng> candidate=new ArrayList<LatLng>();
+        double minDist;
+        LatLng actDist=new LatLng(0,0);
+        boolean loop = true;
+        while(loop){
+            candidate.clear();
+            //removing source from good points arraylist
+            for(i = gp.size() - 1;i>=0;i--){
+                if(LatLngIsEqual(gp.get(i),source)){
+                    gp.remove(i);
+                    break;
+                }
+            }
+
+            midLatLng = new LatLng((source.latitude + dest.latitude)/2,(source.longitude + dest.longitude)/2);
+
+            a.setLatitude(midLatLng.latitude);
+            a.setLongitude(midLatLng.longitude);
+
+            b.setLatitude(source.latitude);
+            b.setLongitude(source.longitude);
+
+            Log.e("GETTING_ROUTES",a.distanceTo(b)+"");
+            threshold = a.distanceTo(b) + 50;
+
+            //Toast.makeText(BasicMapDemoActivity.this,"distance : " + Double.toString(threshold),Toast.LENGTH_SHORT).show();
+
+            for(i=gp.size()- 1; i >=0 ;i--){
+
+
+                b.setLongitude(gp.get(i).longitude);
+                b.setLatitude(gp.get(i).latitude);
+
+                //retaining all points inside the circle of life ;)
+                temp = a.distanceTo(b);
+                if(temp > threshold){
+                    gp.remove(i);
+
+                }
+
+
+
+            }
+            //Toast.makeText(BasicMapDemoActivity.this,"size : "+gp.size(),Toast.LENGTH_SHORT).show();
+
+            for(i=bp.size()- 1; i >=0 ;i--){
+
+                b.setLongitude(bp.get(i).longitude);
+                b.setLatitude(bp.get(i).latitude);
+
+                temp = a.distanceTo(b);
+                if(temp > threshold){
+                    bp.remove(i);
+
+                }
+            }
+            if(gp.size()==0) break;
+            minDist=100000;
+
+            for( i=0;i<gp.size();i++){
+                if(getMinBPDistance(source,gp.get(i),bp,threshold)>threshold1){
+                    candidate.add(gp.get(i));
+                }
+            }
+            for( i=0;i<candidate.size();i++){
+                if(findDist(source,candidate.get(i))<minDist){
+                    minDist=findDist(source,candidate.get(i));
+                    actDist=candidate.get(i);
+                }
+            }
+            source=actDist;
+            //Log.e("hello","coordinates : " + Double.toString(source.latitude) + " , " + Double.toString(source.longitude));
+            wayPoints.add(source);
+            setMarkerAt(source);
+        }
+        //Toast.makeText(BasicMapDemoActivity.this,"waypoint size : "+ wayPoints.size(),Toast.LENGTH_SHORT).show();
+
+        return wayPoints;
+    }
+
+    public void setMarkerAt(LatLng latLng){
+        // Creating MarkerOptions
+        mymap.addMarker(new MarkerOptions()
+                .position(latLng)
+                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE)));
+    }
+
+    boolean LatLngIsEqual(LatLng a,LatLng b){
+        if(a.latitude == b.latitude && a.longitude == b.longitude)
+            return true;
+        else
+            return false;
+    }
+
+    double min(Double a,Double b){
+        if(a<b) return a;
+        else return b;
+    }
+
+
+    double findDist(LatLng a,LatLng b){
+        Location x=new Location("");
+        Location y=new Location("");
+        x.setLatitude(a.latitude); x.setLongitude(a.longitude);
+        y.setLatitude(b.latitude); y.setLongitude(b.longitude);
+        return x.distanceTo(y);
+    }
+
+
+    double getMinBPDistance(LatLng source , LatLng gp_curr , ArrayList<LatLng> bp , double radius){
+
+        int i;
+        double minDist;
+        double X,Y;
+        double dX,dY;
+        X=gp_curr.latitude;
+        Y=gp_curr.longitude;
+        dX=100*(gp_curr.latitude-source.latitude);
+        dY=100*(gp_curr.longitude-source.longitude);
+        minDist = 2.0 * radius;
+        //while(X<=gp_curr.latitude && Y<=gp_curr.longitude){
+        for(i=0 ; i < bp.size();i++){
+            minDist=min(findDist(new LatLng(X,Y),bp.get(i)),minDist);
+        }
+        //X=(X*1000+dX)/1000;
+        //Y=(Y*1000+dY)/1000;
+        //}
+        return minDist;
+    }
+
+    public void connectPoints(){
+
+//        CameraPosition cp = new CameraPosition.Builder().target(new LatLng(13.035041, 80.250399)).bearing(0).tilt(40).zoom(20).build();
+//        mymap.moveCamera(CameraUpdateFactory.newCameraPosition(cp));
+
+//        ArrayList<LatLng> c,d;
+//        c = new ArrayList<LatLng>();
+//        c.add(new LatLng(13.034932,80.250702));
+//        c.add(new LatLng(13.033535,80.251135));
+//        c.add(new LatLng(13.033513,80.252933));
+//        d = new ArrayList<LatLng>();
+
+
+
+        //Displaying all danger points using BLUE marker
+
+        for(i=0;i<badpoints.size();i++){
+            mymap.addMarker(new MarkerOptions()
+                    .position(badpoints.get(i))
+                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)));
+        }
+
+        //getMinBPDistance(new LatLng(13.035095,80.249762),new LatLng(13.034932,80.250702))
+
+//        progressDialog.setTitle("Drawing Route....");
+//        progressDialog.setMessage("Please wait");
+//        progressDialog.setCancelable(false);
+//        progressDialog.setIndeterminate(false);
+//        progressDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+//        progressDialog.setCanceledOnTouchOutside(false);
+//        progressDialog.setMax(todraw.size()+2);
+
+
+        try {
+            todraw = findWayPoints(goodpoints,badpoints,coordinate,coord);
+
+            int siz = todraw.size(), xyz;
+            //progressDialog.show();
+            if(siz==0)
+                drawRoute(coordinate,coord);
+            else {
+                drawRoute(coordinate, todraw.get(0));
+                for (xyz = 0; xyz < siz - 1; xyz++) {
+                    drawRoute(todraw.get(xyz), todraw.get(xyz + 1));
+                    progressDialog.setProgress(xyz + 1);
+                }
+                drawRoute(todraw.get(xyz), coord);
+            }
+        }
+        catch (Exception e){
+            Log.e("GETTING_ROUTE","drawing new route "+e.getMessage());
+        }
+        progressDialog.hide();
+    }
 
     @Override
     public void onCameraMove(){
@@ -230,6 +604,13 @@ public class BasicMapDemoActivity extends AppCompatActivity implements
 
         mymap = map;
 
+        double latitude =  13.034074;
+        double longitude = 80.247492;
+        coordinate = new LatLng(latitude, longitude); //Store these lat lng values somewhere. These should be constant.
+        CameraUpdate location = CameraUpdateFactory.newLatLngZoom(
+                coordinate, 18);
+        map.moveCamera(location);
+        map.addMarker(new MarkerOptions().position(coordinate).title("You're here"));
 
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -240,23 +621,31 @@ public class BasicMapDemoActivity extends AppCompatActivity implements
             }
         });
 
-        for(int n=0;n<3;n++){
-            Handler handler = new Handler();
-            handler.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    GPSTracker gps = new GPSTracker(getApplicationContext());
-                    double latitude = gps.getLatitude();
-                    double longitude = gps.getLongitude();
-                    coordinate = new LatLng(latitude, longitude); //Store these lat lng values somewhere. These should be constant.
-                    CameraUpdate location = CameraUpdateFactory.newLatLngZoom(
-                            coordinate, 15);
-                    map.animateCamera(location);
-                    map.addMarker(new MarkerOptions().position(coordinate).title("You're here"));
-                }
-            }, 2500);
-
-        }
+                    Intent i = getIntent();
+                    try{
+                        if(!i.getStringExtra("desti").equals("")){
+                            desti = i.getStringExtra("desti");
+                            edt.setText(desti);
+                            try{
+                                List addressList = geo.getFromLocationName(desti, 1);
+                                if (addressList != null && addressList.size() > 0) {
+                                    Address address = (Address) addressList.get(0);
+                                    double x1 = address.getLatitude();
+                                    double y1 = address.getLongitude();
+                                    coord = new LatLng(x1,y1);
+                                }
+                            }
+                            catch (Exception e){
+                                Log.e("GETTING_ROUTE","geocoding "+e.getMessage());
+                            }
+                            Log.e("GETTING_ROUTE","geocoded "+i.getStringExtra("desti"));
+                            Log.e("GETTING_ROUTE","geocoded 1234 "+coord+" "+coordinate);
+                            connectPoints();
+                        }
+                    }
+                    catch (Exception e){
+                        Log.e("GETTING_ROUTE","this is fine///// ......"+e.getMessage());
+                    }
 
     }
 
@@ -265,3 +654,73 @@ public class BasicMapDemoActivity extends AppCompatActivity implements
 
 
 }
+
+
+/*
+
+                        try {
+                                    Log.e("GETTING_ROUTE","HERE!!!!!!!HELLO WORLD");
+                                    DirectionsApiRequest req = DirectionsApi.getDirections(context, coord.latitude + "," + coord.longitude, coordinate.latitude + "," + coordinate.longitude);
+                                    Log.e("GETTING_ROUTE","HERE!!!!!!!HELLO WORLD54353");
+
+                                    Log.e("GETTING_ROUTE","HERE!!!!!!!");
+                                    DirectionsResult res = req.await();
+                                    if (res.routes == null)
+                                        Log.e("GETTING_ROUTE", "NULLLLL");
+                                    //Loop through legs and steps to get encoded polylines of each step
+                                    if (res.routes != null && res.routes.length > 0) {
+                                        DirectionsRoute route = res.routes[0];
+                                        Log.e("GETTING_ROUTE","HERE!!!!!!!123");
+
+                                        if (route.legs != null) {
+                                            Log.e("GETTING_ROUTE","HERE!!!!!!!4353");
+                                            for (int i = 0; i < route.legs.length; i++) {
+                                                DirectionsLeg leg = route.legs[i];
+                                                if (leg.steps != null) {
+                                                    Log.e("GETTING_ROUTE","HERE!!!!!!!6445");
+                                                    for (int j = 0; j < leg.steps.length; j++) {
+                                                        DirectionsStep step = leg.steps[j];
+                                                        if (step.steps != null && step.steps.length > 0) {
+                                                            Log.e("GETTING_ROUTE","HERE!!!!!!!adczdzdz");
+                                                            for (int k = 0; k < step.steps.length; k++) {
+                                                                DirectionsStep step1 = step.steps[k];
+                                                                EncodedPolyline points1 = step1.polyline;
+                                                                Log.e("GETTING_ROUTE","HERE!!!!!!!9567575");
+                                                                if (points1 != null) {
+                                                                    //Decode polyline and add points to list of route coordinates
+                                                                    List<com.google.maps.model.LatLng> coords1 = points1.decodePath();
+                                                                    for (com.google.maps.model.LatLng coord1 : coords1) {
+                                                                        path.add(new LatLng(coord1.lat, coord1.lng));
+                                                                    }
+                                                                }
+                                                            }
+                                                        } else {
+                                                            EncodedPolyline points = step.polyline;
+                                                            if (points != null) {
+                                                                //Decode polyline and add points to list of route coordinates
+                                                                List<com.google.maps.model.LatLng> coords = points.decodePath();
+                                                                for (com.google.maps.model.LatLng coo : coords) {
+                                                                    path.add(new LatLng(coo.lat, coo.lng));
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch (Exception ex) {
+                                    Log.e("Routing", ex.getLocalizedMessage());
+                                }
+
+                                //Draw the polyline
+                                if (path.size() > 0) {
+                                    Log.e("GETTING_ROUTE","HERE!!!!!!! path size >0");
+                                    PolylineOptions opts = new PolylineOptions().addAll(path).color(Color.BLUE).width(5);
+                                    mymap.addPolyline(opts);
+                                }
+                                else
+                                    Log.e("GETTING_ROUTE","HERE!!!!!!! path size <0");
+                                mymap.getUiSettings().setZoomControlsEnabled(true);
+
+ */

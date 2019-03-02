@@ -41,7 +41,7 @@
             android:maxLines="1"
             android:layout_marginLeft="20dp"
             android:inputType="text"
-            android:layout_marginRight="50dp"
+            android:layout_marginRight="20dp"
             android:background="@drawable/rounded_edt"
             android:hint="   Where to?"
             android:cursorVisible="false"
@@ -50,12 +50,12 @@
             />
 
     <Button
-        android:layout_width="30dp"
+        android:layout_width="50dp"
         android:layout_height="40dp"
         android:layout_marginTop="80dp"
         android:layout_alignParentEnd="true"
         android:id="@+id/searchbutt"
-        android:layout_marginRight="50dp"
+        android:layout_marginRight="20dp"
         android:background="@drawable/rounded_edt"
         android:text="->"
         android:textSize="20dp"
