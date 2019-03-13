@@ -170,7 +170,7 @@ public class BasicMapDemoActivity extends AppCompatActivity implements
         fillgoodpoints();
         fillbadpoints();
         context = new GeoApiContext.Builder()
-                .apiKey("AIzaSyCyI9O3Mh7D1LEdrtdRLkYDilcKBAxsJX4")
+                .apiKey("Your_api_key_here")
                 .build();
         edt = (EditText) findViewById(R.id.enterloc);
 
